@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::ffi::OsString;
 use std::fs::read;
 use std::path::PathBuf;
 use std::str::from_utf8;
@@ -146,19 +145,11 @@ impl DetectEngine {
 
     // Get the local packages in the file tree and parse as a list of Strings that are "local packages"
     fn get_local_packages(&self, path: &PathBuf) -> Result<HashSet<String>, io::Error> {
-        let local_packages = match self.finder.find_local_packages(&path) {
-            Ok(packages) => packages,
-            Err(e) => panic!("Problem finding local packages: {:?}", e),
-        };
-        let local_packages: HashSet<OsString> = local_packages
-            .iter()
-            .map(|pb| pb.file_stem())
-            .filter(|stem| stem.is_some())
-            .map(|stem| stem.unwrap().to_os_string())
-            .collect();
+        let local_packages = self.finder.find_local_packages(&path)?;
         let local_packages: HashSet<String> = local_packages
             .iter()
-            .filter_map(|os_str| os_str.to_str())
+            .filter_map(|pb| pb.file_stem())
+            .filter_map(|package_name| package_name.to_str())
             .map(String::from)
             .collect();
         debug!(
