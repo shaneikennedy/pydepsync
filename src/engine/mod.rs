@@ -128,7 +128,8 @@ impl DetectEngine {
                     move || resolver.resolve(&dep)
                 })
             })
-            .map(|h| h.join().unwrap().unwrap())
+            .filter_map(|h| h.join().ok())
+            .filter_map(|result| result.ok())
             .collect();
 
         debug!(
