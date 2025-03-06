@@ -97,5 +97,5 @@ dependencies = [
 - [x] Allow extra package indexes
 - [x] Allow "preferable" package index, i.e check there first
 - [ ] Add a dotfile for saving configurattion
-- [ ] Do better than panicing everywhere
+- [x] Do better than panicing everywhere
 - [x] Make it fast

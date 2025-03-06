@@ -9,6 +9,7 @@ use finder::PythonFileFinder;
 use log::{debug, info};
 use parser::extract_dependencies;
 use resolver::PackageResolver;
+use thiserror::Error;
 
 use crate::dependency::Dependency;
 use crate::pyproject::PyProject;
@@ -43,6 +44,21 @@ pub struct DetectEngine {
     resolver: PackageResolver,
 }
 
+#[derive(Debug, Error)]
+pub enum DetectEngineError {
+    #[error("problem evaluating imports")]
+    EvaluationError,
+    #[error("problem reading packages")]
+    FileFindingError,
+    #[error("problem reading python file")]
+    FileReadingError,
+    #[error("problem parsing python code")]
+    ParsingError,
+    #[allow(dead_code)]
+    #[error("problem resolving packages on package index")]
+    ResolverError,
+}
+
 impl DetectEngine {
     pub fn new(pyproject: PyProject, options: EngineOptions) -> Self {
         let mut exclude_dirs = vec![
@@ -61,31 +77,36 @@ impl DetectEngine {
         };
     }
 
-    pub fn detect_dependencies(&self, path: PathBuf) -> Result<HashSet<Dependency>, io::Error> {
+    pub fn detect_dependencies(
+        &self,
+        path: PathBuf,
+    ) -> Result<HashSet<Dependency>, DetectEngineError> {
         // Find python modules
         info!("Reading your code...");
-        let files = match self.finder.find_files(&path) {
-            Ok(f) => f,
-            Err(e) => panic!("Problem parsing directory: {:?}", e),
-        };
+        let files = self.finder.find_files(&path);
+        if files.is_err() {
+            return Err(DetectEngineError::FileFindingError);
+        }
 
         // Parse imports
         info!("Parsing imports...");
         let mut candidates: HashSet<String> = HashSet::new();
-        for file in &files {
-            let contents = match read(&file) {
-                Ok(c) => c,
-                Err(e) => panic!("Problem opening file: {:?}", e),
-            };
+        for file in &files.unwrap() {
+            let contents = read(&file);
+            if contents.is_err() {
+                return Err(DetectEngineError::FileReadingError);
+            }
+            let contents = contents.unwrap();
 
-            match (self.parser)(from_utf8(&contents).unwrap()) {
-                Ok(imports) => {
-                    for i in imports {
-                        // filter out mod.sub.subsub  we only want mod here
-                        candidates.insert(i.split(".").take(1).collect::<String>());
-                    }
-                }
-                Err(_) => panic!("problem extracting deps for {:?}", file.to_str().unwrap()),
+            // Guaranteed to be utf8 from match read(&file) above
+            let content_str = from_utf8(&contents).unwrap();
+            let imports = (self.parser)(content_str);
+            if imports.is_err() {
+                return Err(DetectEngineError::ParsingError);
+            }
+            for i in imports.unwrap() {
+                // filter out mod.sub.subsub  we only want mod here
+                candidates.insert(i.split(".").take(1).collect::<String>());
             }
         }
 
@@ -97,30 +118,28 @@ impl DetectEngine {
                 .collect::<Vec<_>>()
                 .join(",")
         );
-
-        let local_packages = match self.get_local_packages(&path) {
-            Ok(packages) => packages,
-            Err(e) => panic!("Problem finding local packages: {:?}", e),
-        };
+        let local_packages = self.get_local_packages(&path)?;
         let stdlib = stdlib::get_python_stdlib_modules();
         let irregulars = irregulars::get_python_irregulars();
+
         // Evaluate the imports, i.e filtering and remapping
         info!("Evaluating candidates...");
-        let deps = match (self.evaluator)(
+        let deps = (self.evaluator)(
             candidates,
             self.pyproject.all_deps(),
             local_packages,
             stdlib,
             irregulars,
-        ) {
-            Ok(d) => d,
-            Err(e) => panic!("Problem evaluating candidates: {:?}", e),
-        };
+        );
+        if deps.is_err() {
+            return Err(DetectEngineError::EvaluationError);
+        }
 
         // Resolve each candidate in their own thread, join the threads
         // collect the resolved deps back into a hashset
         info!("Resolving packages...");
         let resolved_deps: HashSet<Dependency> = deps
+            .unwrap()
             .into_iter()
             .map(|dep| {
                 thread::spawn({
@@ -145,9 +164,13 @@ impl DetectEngine {
     }
 
     // Get the local packages in the file tree and parse as a list of Strings that are "local packages"
-    fn get_local_packages(&self, path: &PathBuf) -> Result<HashSet<String>, io::Error> {
-        let local_packages = self.finder.find_local_packages(&path)?;
+    fn get_local_packages(&self, path: &PathBuf) -> Result<HashSet<String>, DetectEngineError> {
+        let local_packages = self.finder.find_local_packages(&path);
+        if local_packages.is_err() {
+            return Err(DetectEngineError::FileFindingError);
+        }
         let local_packages: HashSet<String> = local_packages
+            .unwrap()
             .iter()
             .filter_map(|pb| pb.file_stem())
             .filter_map(|package_name| package_name.to_str())

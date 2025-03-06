@@ -1,7 +1,7 @@
-use std::{error::Error, path::PathBuf};
+use std::path::PathBuf;
 
 use clap::Parser;
-use engine::EngineOptions;
+use engine::{DetectEngineError, EngineOptions};
 use log::info;
 use simple_logger::SimpleLogger;
 
@@ -25,7 +25,7 @@ struct Args {
     prefered_index: Option<String>,
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<(), DetectEngineError> {
     SimpleLogger::new()
         .env()
         .with_level(log::LevelFilter::Info)
@@ -42,7 +42,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let pyproject_path = PathBuf::from("./pyproject.toml");
     let pyproject = pyproject::read(&pyproject_path).unwrap();
     let engine = engine::DetectEngine::new(pyproject.clone(), options);
-    let deps = engine.detect_dependencies(PathBuf::from(".")).unwrap();
+    let deps = engine.detect_dependencies(PathBuf::from("."))?;
+
     if deps.is_empty() {
         info!("No dependencies detected, nothing to do");
         return Ok(());
