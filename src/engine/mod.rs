@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::str::from_utf8;
 use std::{io, thread};
 
-use evaluator::evaluate_dependencies;
+use evaluator::DependencyEvaluator;
 use finder::PythonFileFinder;
 use log::{debug, info};
 use parser::extract_dependencies;
@@ -22,30 +22,26 @@ mod resolver;
 mod stdlib;
 
 type ImportParser = fn(&str) -> Result<Vec<String>, io::Error>;
-type DependencyEvaluator = fn(
-    HashSet<String>,
-    HashSet<Dependency>,
-    HashSet<String>,
-    HashSet<&str>,
-    HashMap<&str, &str>,
-) -> Result<HashSet<Dependency>, io::Error>;
 
+#[derive(Clone)]
 pub struct EngineOptions {
     pub exclude_dirs: Vec<String>,
     pub extra_indexes: Vec<String>,
     pub preferred_index: Option<String>,
+    pub extras_to_remap: HashMap<String, String>,
 }
 
-pub struct DetectEngine {
+pub struct DetectEngine<'a> {
     pyproject: PyProject,
     finder: PythonFileFinder,
     parser: ImportParser,
-    evaluator: DependencyEvaluator,
+    evaluator: DependencyEvaluator<'a>,
     resolver: PackageResolver,
 }
 
 #[derive(Debug, Error)]
 pub enum DetectEngineError {
+    #[allow(dead_code)]
     #[error("problem evaluating imports")]
     EvaluationError,
     #[error("problem reading packages")]
@@ -59,20 +55,26 @@ pub enum DetectEngineError {
     ResolverError,
 }
 
-impl DetectEngine {
+impl DetectEngine<'_> {
     pub fn new(pyproject: PyProject, options: EngineOptions) -> Self {
         let mut exclude_dirs = vec![
             ".venv".to_string(),
             ".git".to_string(),
             "target".to_string(),
         ];
-        exclude_dirs.extend(options.exclude_dirs);
-        let resolver = PackageResolver::new(options.extra_indexes, options.preferred_index);
+        for dir in &options.exclude_dirs {
+            exclude_dirs.push(dir.clone());
+        }
+        let resolver = PackageResolver::new(
+            options.extra_indexes.clone(),
+            options.preferred_index.clone(),
+        );
+        let evaluator = DependencyEvaluator::new(options.extras_to_remap);
         return DetectEngine {
             pyproject,
             finder: finder::PythonFileFinder::new().exclude_dirs(exclude_dirs),
             parser: extract_dependencies,
-            evaluator: evaluate_dependencies,
+            evaluator,
             resolver,
         };
     }
@@ -119,27 +121,17 @@ impl DetectEngine {
                 .join(",")
         );
         let local_packages = self.get_local_packages(&path)?;
-        let stdlib = stdlib::get_python_stdlib_modules();
-        let irregulars = irregulars::get_python_irregulars();
 
         // Evaluate the imports, i.e filtering and remapping
         info!("Evaluating candidates...");
-        let deps = (self.evaluator)(
-            candidates,
-            self.pyproject.all_deps(),
-            local_packages,
-            stdlib,
-            irregulars,
-        );
-        if deps.is_err() {
-            return Err(DetectEngineError::EvaluationError);
-        }
+        let deps = self
+            .evaluator
+            .evaluate(candidates, self.pyproject.all_deps(), local_packages);
 
         // Resolve each candidate in their own thread, join the threads
         // collect the resolved deps back into a hashset
         info!("Resolving packages...");
         let resolved_deps: HashSet<Dependency> = deps
-            .unwrap()
             .into_iter()
             .map(|dep| {
                 thread::spawn({
@@ -201,6 +193,7 @@ mod tests {
             exclude_dirs: Vec::new(),
             extra_indexes: Vec::new(),
             preferred_index: None,
+            extras_to_remap: HashMap::new(),
         };
         let engine = DetectEngine::new(pyproject, options);
         let deps = engine

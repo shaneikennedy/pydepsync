@@ -23,6 +23,30 @@ struct Args {
     /// The index pydepsync should check first when resolving packages
     #[arg(long)]
     prefered_index: Option<String>,
+
+    /// List of key-value pairs in the format 'key=value'
+    #[arg(
+        short,
+        long,
+        value_name = "KEY=VALUE",
+        value_parser = remap_parser,
+        number_of_values = 1,
+        action = clap::ArgAction::Append
+    )]
+    remap: Vec<(String, String)>,
+}
+
+fn remap_parser(s: &str) -> Result<(String, String), String> {
+    match s.split_once('=') {
+        Some((key, value)) => {
+            if key.is_empty() {
+                Err("Key cannot be empty".to_string())
+            } else {
+                Ok((key.to_string(), value.to_string()))
+            }
+        }
+        None => Err("Invalid key-value pair format. Use 'key=value'".to_string()),
+    }
 }
 
 fn main() -> Result<(), DetectEngineError> {
@@ -38,6 +62,7 @@ fn main() -> Result<(), DetectEngineError> {
         exclude_dirs: args.exclude_dirs,
         extra_indexes: args.extra_indexes,
         preferred_index: args.prefered_index,
+        extras_to_remap: args.remap.into_iter().collect(),
     };
     let pyproject_path = PathBuf::from("./pyproject.toml");
     let pyproject = pyproject::read(&pyproject_path).unwrap();

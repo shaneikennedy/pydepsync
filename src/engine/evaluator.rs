@@ -1,41 +1,57 @@
-use std::{
-    collections::{HashMap, HashSet},
-    io,
-};
+use std::collections::{HashMap, HashSet};
 
 use crate::dependency::Dependency;
 
-pub fn evaluate_dependencies(
-    candidates: HashSet<String>,
-    existing_deps: HashSet<Dependency>,
-    local_packages: HashSet<String>,
-    stdlib_packages: HashSet<&str>,
-    irregulars_to_remap: HashMap<&str, &str>,
-) -> Result<HashSet<Dependency>, io::Error> {
-    // Filter out any imports that are in the stdlib,
-    // And convert anything that matches one of the "irregulars"
-    // i.e python packages that are called something but to import code
-    // from that package is called something else
-    let deps: HashSet<String> = candidates
-        .iter()
-        .filter(|c| !stdlib_packages.contains(&c.as_str()))
-        .cloned()
-        .filter(|c| !local_packages.clone().contains(c))
-        .map(|c| {
-            let hit = irregulars_to_remap.get(c.as_str());
-            match hit {
-                Some(m) => m.to_string(),
-                None => c,
-            }
-        })
-        // filter on existing needs to come last
-        .filter(|c| !existing_deps.contains(&Dependency::parse(c).unwrap()))
-        .collect();
+use super::{irregulars, stdlib};
 
-    Ok(deps
-        .iter()
-        .map(|d| Dependency::parse(d.as_str()).unwrap())
-        .collect())
+#[derive(Clone)]
+pub struct DependencyEvaluator<'a> {
+    stdlib_pakages: HashSet<&'a str>,
+    irregulars_to_remap: HashMap<String, String>,
+}
+
+impl<'a> DependencyEvaluator<'_> {
+    pub fn new(extras_to_remap: HashMap<String, String>) -> Self {
+        let mut irregulars = HashMap::from(extras_to_remap);
+        for (key, val) in irregulars::get_python_irregulars() {
+            irregulars.insert(key.to_string(), val.to_string());
+        }
+        DependencyEvaluator {
+            stdlib_pakages: stdlib::get_python_stdlib_modules(),
+            irregulars_to_remap: irregulars,
+        }
+    }
+
+    pub fn evaluate(
+        &self,
+        candidates: HashSet<String>,
+        existing_deps: HashSet<Dependency>,
+        local_packages: HashSet<String>,
+    ) -> HashSet<Dependency> {
+        // Filter out any imports that are in the stdlib,
+        // And convert anything that matches one of the "irregulars"
+        // i.e python packages that are called something but to import code
+        // from that package is called something else
+        let deps: HashSet<String> = candidates
+            .iter()
+            .filter(|c| !self.stdlib_pakages.contains(&c.as_str()))
+            .cloned()
+            .filter(|c| !local_packages.clone().contains(c))
+            .map(|c| {
+                let hit = self.irregulars_to_remap.get(c.as_str());
+                match hit {
+                    Some(m) => m.to_string(),
+                    None => c,
+                }
+            })
+            // filter on existing needs to come last
+            .filter(|c| !existing_deps.contains(&Dependency::parse(c).unwrap()))
+            .collect();
+
+        deps.iter()
+            .map(|d| Dependency::parse(d.as_str()).unwrap())
+            .collect()
+    }
 }
 
 #[cfg(test)]
@@ -43,63 +59,55 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_excludes_stdlib() -> Result<(), io::Error> {
+    fn test_excludes_stdlib() {
+        let evaluator = DependencyEvaluator::new(HashMap::new());
         let candidates = HashSet::from(["os".to_string()]);
-        let res = evaluate_dependencies(
-            candidates,
-            HashSet::new(),
-            HashSet::new(),
-            HashSet::from(["os"]),
-            HashMap::new(),
-        )
-        .unwrap();
+        let res = evaluator.evaluate(candidates, HashSet::new(), HashSet::new());
         assert_eq!(res.len(), 0);
-        Ok(())
     }
 
     #[test]
-    fn test_excludes_local_package() -> Result<(), io::Error> {
+    fn test_excludes_local_package() {
+        let evaluator = DependencyEvaluator::new(HashMap::new());
         let candidates = HashSet::from(["mymod".to_string()]);
-        let res = evaluate_dependencies(
+        let res = evaluator.evaluate(
             candidates,
             HashSet::new(),
             HashSet::from(["mymod".to_string()]),
-            HashSet::new(),
-            HashMap::new(),
-        )
-        .unwrap();
+        );
         assert_eq!(res.len(), 0);
-        Ok(())
     }
 
     #[test]
-    fn test_excludes_existing_packages() -> Result<(), io::Error> {
+    fn test_excludes_existing_packages() {
+        let evaluator = DependencyEvaluator::new(HashMap::new());
         let candidates = HashSet::from(["django".to_string()]);
-        let res = evaluate_dependencies(
+        let res = evaluator.evaluate(
             candidates,
             HashSet::from([Dependency::parse("Django").unwrap()]),
             HashSet::new(),
-            HashSet::new(),
-            HashMap::new(),
-        )
-        .unwrap();
+        );
         assert_eq!(res.len(), 0);
-        Ok(())
     }
 
     #[test]
-    fn test_remaps_irregular() -> Result<(), io::Error> {
+    fn test_remaps_irregular() {
+        let evaluator = DependencyEvaluator::new(HashMap::new());
         let candidates = HashSet::from(["AFQ".to_string()]);
-        let res = evaluate_dependencies(
-            candidates,
-            HashSet::new(),
-            HashSet::new(),
-            HashSet::new(),
-            HashMap::from([("AFQ", "pyAFQ")]),
-        )
-        .unwrap();
+        let res = evaluator.evaluate(candidates, HashSet::new(), HashSet::new());
         assert_eq!(res.len(), 1);
         assert!(res.contains(&Dependency::parse("pyAFQ").unwrap()));
-        Ok(())
+    }
+
+    #[test]
+    fn test_remaps_extra_irregulars() {
+        let evaluator = DependencyEvaluator::new(HashMap::from([(
+            "thingtoremap".to_string(),
+            "ThingToRemap".to_string(),
+        )]));
+        let candidates = HashSet::from(["thingtoremap".to_string()]);
+        let res = evaluator.evaluate(candidates, HashSet::new(), HashSet::new());
+        assert_eq!(res.len(), 1);
+        assert!(res.contains(&Dependency::parse("ThingToRemap").unwrap()));
     }
 }
