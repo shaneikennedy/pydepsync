@@ -16,6 +16,8 @@ clap = { version = "4.5.31", features = ["derive"] }
 thiserror = "2.0.12"
 ureq = { version = "3.0.8", features = ["json"] }
 scraper = "0.23.1"
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
 
 [dev-dependencies]
 tempfile = "3.2"

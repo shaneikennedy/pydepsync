@@ -1,0 +1,18 @@
+# .pydepsync.toml
+
+# Directories to exclude (array of strings)
+# .venv and .git are ignored by default you don't need them in your config
+exclude_dirs = [".venv", ".git"]
+
+# Extra package indexes to check (array of strings)
+extra_indexes = ["https://test.pypi.org/simple", "https://mycompany.pypi.org/simple"]
+
+# Preferred index to check first (optional string)
+# pypi.org/simple is the default index, you don't need this in your config
+preferred_index = "https://pypi.org/simple"
+
+# Remappings as a table of key-value pairs
+# ex from rest_framework import generics but on pypi the package is called
+# djangorestframework
+[remap]
+"how_its_imported" = "WhatItsNamedOnIndex"
