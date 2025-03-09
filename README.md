@@ -2,11 +2,11 @@
 
 Detect external package dependencies in your code and add the missing ones to pyproject.toml
 
-A rust port of the excellent package [pipreqs](https://github.com/bndr/pipreqs), but for pyproject.toml
+A Rust port of the excellent package [pipreqs](https://github.com/bndr/pipreqs), but for pyproject.toml
 
 ## Usage
 
-`pydepsync` in the root of a pyproject.toml managed project
+Run `pydepsync` in the root of a project with a `pyproject.toml` file to scan your code and update dependencies
 
 ## Use-cases
 
@@ -17,85 +17,60 @@ A rust port of the excellent package [pipreqs](https://github.com/bndr/pipreqs),
 
 ### From Binary Releases
 
-Download the latest binary for your platform from the [releases page](https://github.com/shaneikennedy/pydepsync/releases/latest).
+Download the latest binary for your platform from the [releases page](https://github.com/shaneikennedy/pydepsync/releases/latest), extract it, and place it in your PATH.
 
 ### From Source
+
+Install from source using Cargo (requires Rust to be installed):
+
 ```bash
 cargo install --git https://github.com/shaneikennedy/pydepsync
 ```
 
-## Demo
+## Usage
 
 ```sh
-pydepsync git:main
-❯ pwd
-/Users/shane.kennedy/dev/shane/pydepsync
-
-pydepsync git:main
-❯ cargo build
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.14s
-
-pydepsync git:main
-❯ target/debug/pydepsync --help
+uvproject git:main
+❯ pydepsync --help
 Usage: pydepsync [OPTIONS]
 
 Options:
       --exclude-dirs <EXCLUDE_DIRS>
           List of directories to ignore, we ignore .venv and .git by default
       --extra-indexes <EXTRA_INDEXES>
-          List of extra package indexes pydepsync should check when resolving dependencies. We check https://pypi.org/pypi by default
-      --prefered-index <PREFERED_INDEX>
+          List of extra package indexes pydepsync should check when resolving dependencies. We check https://pypi.org/simple by default
+      --preferred-index <PREFERRED_INDEX>
           The index pydepsync should check first when resolving packages
+  -r, --remap <KEY=VALUE>
+          List of key-value pairs in the format 'key=value'
   -h, --help
           Print help
   -V, --version
           Print version
-pydepsync git:main
-❯ cd example_app
-
-pydepsync/example_app git:main
-❯ cat pyproject.toml
-[project]
-name = "example"
-version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
-requires-python = ">=3.13"
-dependencies = []
-
-pydepsync/example_app git:main
-❯ ../target/debug/pydepsync
-INFO  [pydepsync::engine] Reading your code...
-INFO  [pydepsync::engine] Parsing imports...
-INFO  [pydepsync::engine] Evaluating candidates...
-INFO  [pydepsync::engine] Resolving packages...
-INFO  [pydepsync::pyproject] Adding: Django~=5.1.6
-INFO  [pydepsync::pyproject] Adding: djangorestframework~=3.15.2
-INFO  [pydepsync] Updated pyproject.toml
-
-pydepsync/example_app git:main
-❯ cat pyproject.toml
-[project]
-name = "example"
-version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
-requires-python = ">=3.13"
-dependencies = [
-    "Django~=5.1.6",
-    "djangorestframework~=3.15.2"
-]
 ```
 
-### ToDos
+## Configuration
 
-- [x] Make it configurable via cli flags
-- [x] Resolve against package registries for proper version speccing
-- [x] Don't overwrite current contents
-- [x] Real logging
-- [x] Handle optional deps, don't try to figure out which option they are but don't overwrite or redeclare them when they exist already
-- [x] Allow extra package indexes
-- [x] Allow "preferable" package index, i.e check there first
-- [ ] Add a dotfile for saving configurattion
-- [x] Do better than panicing everywhere
-- [x] Make it fast
+To avoid repeating CLI arguments, especially for private indexes or remapped packages, create a `.pydepsync.toml` file in your project root (next to `pyproject.toml`). CLI arguments override these settings.
+
+Example:
+
+```toml
+# .pydepsync.toml
+
+# Directories to exclude (array of strings)
+# .venv and .git are ignored by default; no need to list them unless overriding
+exclude_dirs = ["build", "dist"]
+
+# Extra package indexes to check (array of strings)
+extra_indexes = ["https://test.pypi.org/simple/", "https://mycompany.pypi.org/simple/"]
+
+# Preferred index to check first (optional string)
+# Defaults to https://pypi.org/simple/ if omitted
+preferred_index = "https://pypi.org/simple/"
+
+# Remappings for import-to-package-name mismatches
+[remap]
+"rest_framework" = "djangorestframework"  # Built-in for 1000+ public packages
+"how_its_imported" = "WhatItsNamedOnIndex"
+```
