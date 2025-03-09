@@ -3,7 +3,7 @@ use std::io;
 use crate::dependency::Dependency;
 
 use log::{debug, warn};
-use serde_json::Value;
+use scraper::{Html, Selector};
 
 #[derive(Clone)]
 pub struct PackageResolver {
@@ -16,7 +16,7 @@ impl PackageResolver {
             Some(i) => vec![i],
             None => Vec::new(),
         };
-        let default_indexes = vec!["https://pypi.org/pypi".to_string()];
+        let default_indexes = vec!["https://pypi.org/simple".to_string()];
         return PackageResolver {
             indexes: pref_index
                 .into_iter()
@@ -39,7 +39,7 @@ impl PackageResolver {
 
     // TODO make this a much better http client, retries, backoff, error handling
     fn resolve_on_index(self, dep: &Dependency, index: &str) -> Option<Dependency> {
-        let url = format!("{}/{}/json", index, dep.name());
+        let url = format!("{}/{}", index, dep.name());
         let response = ureq::get(url.as_str()).call();
         if response.is_err() {
             warn!(
@@ -50,22 +50,100 @@ impl PackageResolver {
             debug!("Error {}", response.unwrap_err());
             return None;
         }
-        let json: Value = response.unwrap().body_mut().read_json().unwrap();
-        if let Some(version) = json
-            .get("info")
-            .and_then(|info| info.get("version"))
-            .and_then(|version| version.as_str())
-        {
-            debug!("Found version: {} for {}", version, dep.name());
-            let dep_str = format!("{}~={}", dep.name(), version);
-            Some(Dependency::parse(dep_str.as_str()).unwrap())
-        } else {
+        let mut response = response.unwrap();
+        let html = response.body_mut().read_to_string();
+        if html.is_err() {
             warn!(
-                "Could not resolve package {} on index: {}",
+                "Problem reading package info for package {} on index {}",
                 dep.name(),
-                index,
+                index
             );
-            None
+            debug!("Error {}", html.unwrap_err());
+            return None;
         }
+        let html = html.unwrap();
+        let versions = Self::parse_versions_on_index(dep, index, html.as_str());
+        let versions = match versions {
+            Some(v) => v,
+            None => Vec::new(),
+        };
+
+        let lastest_version = Self::get_latest_version_from_version_str(versions);
+
+        match lastest_version {
+            Some(v) => {
+                debug!("Found version: {} for {}", v, dep.name());
+                let dep_str = format!("{}~={}", dep.name(), v);
+                Some(Dependency::parse(dep_str.as_str()).unwrap())
+            }
+            None => {
+                warn!(
+                    "Could not resolve package {} on index: {}",
+                    dep.name(),
+                    index,
+                );
+                None
+            }
+        }
+    }
+
+    fn parse_versions_on_index(dep: &Dependency, index: &str, html: &str) -> Option<Vec<String>> {
+        let document = Html::parse_document(&html);
+        let selector = Selector::parse("a");
+        if selector.is_err() {
+            warn!(
+                "Problem versions for package {} on index {}",
+                dep.name(),
+                index
+            );
+            debug!("Error {}", selector.unwrap_err());
+            return None;
+        }
+        let selector = selector.unwrap();
+
+        let mut versions = Vec::new();
+
+        // Extract all version links, excluding beta, alpha, and release candidates
+        for element in document.select(&selector) {
+            if let Some(href) = element.value().attr("href") {
+                // Extract version from the filename
+                let parts: Vec<&str> = href.split('/').collect();
+                if let Some(filename) = parts.last() {
+                    if let Some(start) = filename.find(format!("{}-", dep.name()).as_str()) {
+                        let rest = &filename[start + format!("{}-", dep.name()).as_str().len()..];
+                        if let Some(end) = rest.find(".tar.gz") {
+                            let version = &rest[..end];
+                            // Verify it only contains numbers and dots
+                            if version.chars().all(|c| c.is_digit(10) || c == '.') {
+                                versions.push(version.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Some(versions)
+    }
+
+    fn get_latest_version_from_version_str(versions: Vec<String>) -> Option<String> {
+        let mut versions = versions.clone();
+        versions.sort_by(|a, b| {
+            let a_parts: Vec<&str> = a.split('.').collect();
+            let b_parts: Vec<&str> = b.split('.').collect();
+
+            for (a_part, b_part) in a_parts.iter().zip(b_parts.iter()) {
+                match (a_part.parse::<i32>(), b_part.parse::<i32>()) {
+                    (Ok(a_num), Ok(b_num)) => {
+                        if a_num != b_num {
+                            return b_num.cmp(&a_num);
+                        }
+                    }
+                    _ => return b.cmp(a), // Fallback to string comparison
+                }
+            }
+            b.len().cmp(&a.len())
+        });
+
+        versions.first().cloned()
     }
 }

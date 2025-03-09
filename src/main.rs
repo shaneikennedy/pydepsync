@@ -16,7 +16,7 @@ struct Args {
     #[arg(long)]
     exclude_dirs: Vec<String>,
 
-    /// List of extra package indexes pydepsync should check when resolving dependencies. We check https://pypi.org/pypi by default.
+    /// List of extra package indexes pydepsync should check when resolving dependencies. We check https://pypi.org/simple by default.
     #[arg(long)]
     extra_indexes: Vec<String>,
 
