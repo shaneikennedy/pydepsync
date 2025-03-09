@@ -70,7 +70,7 @@ fn main() -> Result<(), DetectEngineError> {
     let deps = engine.detect_dependencies(PathBuf::from("."))?;
 
     if deps.is_empty() {
-        info!("No dependencies detected, nothing to do");
+        info!("No new dependencies detected, nothing to do");
         return Ok(());
     }
 
