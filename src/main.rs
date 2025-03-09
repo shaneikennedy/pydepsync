@@ -63,3 +63,157 @@ fn main() -> Result<(), DetectEngineError> {
     };
     Ok(())
 }
+
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::*;
+
+    fn default_args() -> Args {
+        Args {
+            exclude_dirs: Vec::new(),
+            extra_indexes: Vec::new(),
+            preferred_index: None,
+            remap: Vec::new(),
+        }
+    }
+
+    fn default_config() -> Config {
+        Config {
+            exclude_dirs: None,
+            extra_indexes: None,
+            preferred_index: None,
+            remap: None,
+        }
+    }
+
+    #[test]
+    fn test_empty_args_and_config() {
+        let args = default_args();
+        let config = default_config();
+        let options = merge_args_and_config(args, config);
+
+        assert_eq!(
+            options,
+            EngineOptions {
+                exclude_dirs: Vec::new(),
+                extra_indexes: Vec::new(),
+                preferred_index: None,
+                extras_to_remap: HashMap::new(),
+            },
+            "Empty args and config should return empty options"
+        );
+    }
+
+    #[test]
+    fn test_args_only() {
+        let mut args = default_args();
+        args.exclude_dirs = vec!["build".to_string(), "dist".to_string()];
+        args.extra_indexes = vec!["https://test.pypi.org/simple/".to_string()];
+        args.preferred_index = Some("https://pypi.org/simple/".to_string());
+        args.remap = vec![("old".to_string(), "new".to_string())];
+
+        let config = default_config();
+        let options = merge_args_and_config(args, config);
+
+        let mut expected_remap = HashMap::new();
+        expected_remap.insert("old".to_string(), "new".to_string());
+
+        assert_eq!(
+            options,
+            EngineOptions {
+                exclude_dirs: vec!["build".to_string(), "dist".to_string()],
+                extra_indexes: vec!["https://test.pypi.org/simple/".to_string()],
+                preferred_index: Some("https://pypi.org/simple/".to_string()),
+                extras_to_remap: expected_remap,
+            },
+            "Args should take precedence when config is empty"
+        );
+    }
+
+    #[test]
+    fn test_config_only() {
+        let args = default_args();
+
+        let mut config = default_config();
+        config.exclude_dirs = Some(vec![".venv".to_string(), ".git".to_string()]);
+        config.extra_indexes = Some(vec!["https://company.pypi.org/simple/".to_string()]);
+        config.preferred_index = Some("https://custom.pypi.org/simple/".to_string());
+        let mut remap = HashMap::new();
+        remap.insert("rest_framework".to_string(), "djangorestframework".to_string());
+        config.remap = Some(remap.clone());
+
+        let options = merge_args_and_config(args, config);
+
+        assert_eq!(
+            options,
+            EngineOptions {
+                exclude_dirs: vec![".venv".to_string(), ".git".to_string()],
+                extra_indexes: vec!["https://company.pypi.org/simple/".to_string()],
+                preferred_index: Some("https://custom.pypi.org/simple/".to_string()),
+                extras_to_remap: remap,
+            },
+            "Config should be used when args are empty"
+        );
+    }
+
+    #[test]
+    fn test_args_override_config() {
+        let mut args = default_args();
+        args.exclude_dirs = vec!["dist".to_string()];
+        args.preferred_index = Some("https://override.pypi.org/simple/".to_string());
+        args.remap = vec![("old".to_string(), "new".to_string())];
+
+        let mut config = default_config();
+        config.exclude_dirs = Some(vec![".venv".to_string(), ".git".to_string()]);
+        config.extra_indexes = Some(vec!["https://company.pypi.org/simple/".to_string()]);
+        config.preferred_index = Some("https://custom.pypi.org/simple/".to_string());
+        let mut config_remap = HashMap::new();
+        config_remap.insert("rest_framework".to_string(), "djangorestframework".to_string());
+        config.remap = Some(config_remap);
+
+        let options = merge_args_and_config(args, config);
+
+        let mut expected_remap = HashMap::new();
+        expected_remap.insert("old".to_string(), "new".to_string());
+
+        assert_eq!(
+            options,
+            EngineOptions {
+                exclude_dirs: vec!["dist".to_string()],
+                extra_indexes: vec!["https://company.pypi.org/simple/".to_string()],
+                preferred_index: Some("https://override.pypi.org/simple/".to_string()),
+                extras_to_remap: expected_remap,
+            },
+            "Args should override config where provided"
+        );
+    }
+
+    #[test]
+    fn test_partial_args_with_config() {
+        let mut args = default_args();
+        args.extra_indexes = vec!["https://test.pypi.org/simple/".to_string()];
+
+        let mut config = default_config();
+        config.exclude_dirs = Some(vec!["build".to_string()]);
+        config.preferred_index = Some("https://custom.pypi.org/simple/".to_string());
+        let mut remap = HashMap::new();
+        remap.insert("key".to_string(), "value".to_string());
+        config.remap = Some(remap.clone());
+
+        let options = merge_args_and_config(args, config);
+
+        assert_eq!(
+            options,
+            EngineOptions {
+                exclude_dirs: vec!["build".to_string()],
+                extra_indexes: vec!["https://test.pypi.org/simple/".to_string()],
+                preferred_index: Some("https://custom.pypi.org/simple/".to_string()),
+                extras_to_remap: remap,
+            },
+            "Args and config should merge correctly when partially provided"
+        );
+    }
+}

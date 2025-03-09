@@ -2,7 +2,7 @@ use serde::Deserialize;
 use std::{collections::HashMap, fs, path::Path};
 
 /// Configuration that can be defined in a .pydepsync.toml
-#[derive(Deserialize, Debug, Default)]
+#[derive(Deserialize, Debug, PartialEq, Default)]
 pub struct Config {
     pub exclude_dirs: Option<Vec<String>>,
     pub extra_indexes: Option<Vec<String>>,

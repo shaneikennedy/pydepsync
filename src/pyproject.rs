@@ -30,7 +30,7 @@ impl PyProject {
 }
 
 pub fn read(path: &PathBuf) -> Result<PyProject, io::Error> {
-    let content = fs::read_to_string(path).unwrap();
+    let content = fs::read_to_string(path)?;
     let doc = content.parse::<DocumentMut>().unwrap();
 
     // get existing deps
@@ -150,4 +150,161 @@ pub fn write(
     // Write back to file
     fs::write(path, updated_contents).unwrap();
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    fn setup_toml_file(content: &str) -> NamedTempFile {
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(file, "{}", content).unwrap();
+        file
+    }
+
+    #[test]
+    fn test_all_deps_empty() {
+        let pyproject = PyProject {
+            deps: HashSet::new(),
+            optional_deps: HashSet::new(),
+            toml_document: DocumentMut::new(),
+        };
+        let all_deps = pyproject.all_deps();
+        assert_eq!(all_deps.len(), 0, "Empty deps should return empty set");
+    }
+
+    #[test]
+    fn test_all_deps_with_deps() {
+        let mut deps = HashSet::new();
+        deps.insert(Dependency::parse("dep1").unwrap());
+        let mut optional_deps = HashSet::new();
+        optional_deps.insert(Dependency::parse("dep1").unwrap());
+
+        let pyproject = PyProject {
+            deps,
+            optional_deps,
+            toml_document: DocumentMut::new(),
+        };
+        let all_deps = pyproject.all_deps();
+
+        assert_eq!(all_deps.len(), 1, "Should combine deps and optional_deps");
+        assert!(all_deps.contains(&Dependency::parse("dep1").unwrap()));
+    }
+
+    #[test]
+    fn test_read_empty_toml() {
+        let toml_content = "";
+        let file = setup_toml_file(toml_content);
+        let path = file.path().to_path_buf();
+        let result = read(&path);
+        assert!(result.is_ok(), "Reading empty TOML should succeed");
+        let pyproject = result.unwrap();
+        assert_eq!(pyproject.deps.len(), 0, "Empty TOML should have no deps");
+        assert_eq!(
+            pyproject.optional_deps.len(),
+            0,
+            "Empty TOML should have no optional deps"
+        );
+    }
+
+    #[test]
+    fn test_read_basic_deps() {
+        let toml_content = r#"
+            [project]
+            dependencies = ["dep1", "dep2"]
+        "#;
+        let file = setup_toml_file(toml_content);
+        let path = file.path().to_path_buf();
+        let result = read(&path);
+        assert!(result.is_ok(), "Reading basic TOML should succeed");
+        let pyproject = result.unwrap();
+
+        let mut expected_deps = HashSet::new();
+        expected_deps.insert(Dependency::parse("dep1").unwrap());
+        expected_deps.insert(Dependency::parse("dep2").unwrap());
+
+        assert_eq!(pyproject.deps, expected_deps, "Deps should match");
+        assert_eq!(
+            pyproject.optional_deps.len(),
+            0,
+            "No optional deps expected"
+        );
+    }
+
+    #[test]
+    fn test_read_optional_deps() {
+        let toml_content = r#"
+            [project]
+            dependencies = ["dep1"]
+
+            [project.optional-dependencies]
+            test = ["pytest", "coverage"]
+            dev = ["flake8"]
+        "#;
+        let file = setup_toml_file(toml_content);
+        let path = file.path().to_path_buf();
+        let result = read(&path);
+        assert!(result.is_ok(), "Reading optional deps TOML should succeed");
+        let pyproject = result.unwrap();
+
+        let mut expected_deps = HashSet::new();
+        expected_deps.insert(Dependency::parse("dep1").unwrap());
+
+        let mut expected_optional_deps = HashSet::new();
+        expected_optional_deps.insert(Dependency::parse("pytest").unwrap());
+        expected_optional_deps.insert(Dependency::parse("coverage").unwrap());
+        expected_optional_deps.insert(Dependency::parse("flake8").unwrap());
+
+        assert_eq!(pyproject.deps, expected_deps, "Deps should match");
+        assert_eq!(
+            pyproject.optional_deps, expected_optional_deps,
+            "Optional deps should match"
+        );
+    }
+
+    #[test]
+    fn test_read_dependency_groups() {
+        let toml_content = r#"
+            [project]
+            dependencies = ["dep1"]
+
+            [dependency-groups]
+            lint = ["ruff", "mypy"]
+        "#;
+        let file = setup_toml_file(toml_content);
+        let path = file.path().to_path_buf();
+        let result = read(&path);
+        assert!(
+            result.is_ok(),
+            "Reading dependency-groups TOML should succeed"
+        );
+        let pyproject = result.unwrap();
+
+        let mut expected_deps = HashSet::new();
+        expected_deps.insert(Dependency::parse("dep1").unwrap());
+
+        let mut expected_optional_deps = HashSet::new();
+        expected_optional_deps.insert(Dependency::parse("ruff").unwrap());
+        expected_optional_deps.insert(Dependency::parse("mypy").unwrap());
+
+        assert_eq!(pyproject.deps, expected_deps, "Deps should match");
+        assert_eq!(
+            pyproject.optional_deps, expected_optional_deps,
+            "Dependency-groups should be treated as optional deps"
+        );
+    }
+
+    #[test]
+    fn test_read_file_not_found() {
+        let path = PathBuf::from("nonexistent.toml");
+        let result = read(&path);
+        assert!(result.is_err(), "Reading nonexistent file should fail");
+        assert_eq!(
+            result.unwrap_err().kind(),
+            io::ErrorKind::NotFound,
+            "Error should be NotFound"
+        );
+    }
 }

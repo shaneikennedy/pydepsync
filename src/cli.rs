@@ -1,6 +1,6 @@
 use clap::Parser;
 
-#[derive(Parser, Debug)]
+#[derive(PartialEq, Parser, Debug)]
 #[command(version, about, long_about = None)]
 pub struct Args {
     /// List of directories to ignore, we ignore .venv and .git by default

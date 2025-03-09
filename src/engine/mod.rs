@@ -23,7 +23,7 @@ mod stdlib;
 
 type ImportParser = fn(&str) -> Result<Vec<String>, io::Error>;
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct EngineOptions {
     pub exclude_dirs: Vec<String>,
     pub extra_indexes: Vec<String>,
