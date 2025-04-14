@@ -12,7 +12,7 @@ log = "0.4.26"
 simple_logger = "5.0.0"
 toml_edit = "0.22.24"
 taplo = "0.13.2"
-clap = { version = "4.5.32", features = ["derive"] }
+clap = { version = "4.5.36", features = ["derive"] }
 thiserror = "2.0.12"
 ureq = { version = "3.0.9", features = ["json"] }
 scraper = "0.23.1"
