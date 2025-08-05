@@ -7,10 +7,9 @@ pub struct PythonFileFinder {
 
 impl PythonFileFinder {
     pub fn new() -> Self {
-        let python_file_finder = Self {
+        Self {
             excluded_dirs: vec!["venv".to_string(), ".git".to_string()],
-        };
-        python_file_finder
+        }
     }
 
     /// Add directories to exclude from the search

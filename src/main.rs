@@ -19,12 +19,12 @@ fn merge_args_and_config(args: Args, config: Config) -> EngineOptions {
         exclude_dirs: if !args.exclude_dirs.is_empty() {
             args.exclude_dirs
         } else {
-            config.exclude_dirs.unwrap_or_else(|| Vec::new())
+            config.exclude_dirs.unwrap_or_default()
         },
         extra_indexes: if !args.extra_indexes.is_empty() {
             args.extra_indexes
         } else {
-            config.extra_indexes.unwrap_or_else(|| Vec::new())
+            config.extra_indexes.unwrap_or_default()
         },
         preferred_index: args.preferred_index.or(config.preferred_index),
         extras_to_remap: if !args.remap.is_empty() {
@@ -59,11 +59,10 @@ fn main() -> Result<(), DetectEngineError> {
 
     match pyproject::write(&pyproject_path, pyproject, deps) {
         Ok(_) => info!("Updated pyproject.toml"),
-        Err(e) => panic!("Failed to write deps to pyproject.toml: {:?}", e),
+        Err(e) => panic!("Failed to write deps to pyproject.toml: {e:?}"),
     };
     Ok(())
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -142,7 +141,10 @@ mod tests {
         config.extra_indexes = Some(vec!["https://company.pypi.org/simple/".to_string()]);
         config.preferred_index = Some("https://custom.pypi.org/simple/".to_string());
         let mut remap = HashMap::new();
-        remap.insert("rest_framework".to_string(), "djangorestframework".to_string());
+        remap.insert(
+            "rest_framework".to_string(),
+            "djangorestframework".to_string(),
+        );
         config.remap = Some(remap.clone());
 
         let options = merge_args_and_config(args, config);
@@ -171,7 +173,10 @@ mod tests {
         config.extra_indexes = Some(vec!["https://company.pypi.org/simple/".to_string()]);
         config.preferred_index = Some("https://custom.pypi.org/simple/".to_string());
         let mut config_remap = HashMap::new();
-        config_remap.insert("rest_framework".to_string(), "djangorestframework".to_string());
+        config_remap.insert(
+            "rest_framework".to_string(),
+            "djangorestframework".to_string(),
+        );
         config.remap = Some(config_remap);
 
         let options = merge_args_and_config(args, config);

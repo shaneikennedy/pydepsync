@@ -43,17 +43,15 @@ pub fn read(path: &PathBuf) -> Result<PyProject, io::Error> {
 
     // Access the "dependency-groups" table
     let mut optional_dependencies: HashSet<Dependency> = HashSet::new();
-    if let Some(dep_groups) = doc.get("dependency-groups") {
-        if let Item::Table(table) = dep_groups {
-            // Iterate through each group in dependency-groups
-            for (_group_name, group_value) in table.iter() {
-                if let Item::Value(value) = group_value {
-                    // If the value is an array, process each dependency
-                    if let Some(array) = value.as_array() {
-                        for dep in array {
-                            if let Some(dep_str) = dep.as_str() {
-                                optional_dependencies.insert(Dependency::parse(dep_str).unwrap());
-                            }
+    if let Some(Item::Table(table)) = doc.get("dependency-groups") {
+        // Iterate through each group in dependency-groups
+        for (_group_name, group_value) in table.iter() {
+            if let Item::Value(value) = group_value {
+                // If the value is an array, process each dependency
+                if let Some(array) = value.as_array() {
+                    for dep in array {
+                        if let Some(dep_str) = dep.as_str() {
+                            optional_dependencies.insert(Dependency::parse(dep_str).unwrap());
                         }
                     }
                 }
@@ -62,19 +60,14 @@ pub fn read(path: &PathBuf) -> Result<PyProject, io::Error> {
     }
 
     // Parse project.optional-dependencies
-    if let Some(project) = doc.get("project") {
-        if let Item::Table(project_table) = project {
-            if let Some(opt_deps) = project_table.get("optional-dependencies") {
-                if let Item::Table(opt_deps_table) = opt_deps {
-                    for (_group_name, group_value) in opt_deps_table.iter() {
-                        if let Item::Value(value) = group_value {
-                            if let Some(array) = value.as_array() {
-                                for dep in array {
-                                    if let Some(dep_str) = dep.as_str() {
-                                        optional_dependencies
-                                            .insert(Dependency::parse(dep_str).unwrap());
-                                    }
-                                }
+    if let Some(Item::Table(project_table)) = doc.get("project") {
+        if let Some(Item::Table(opt_deps_table)) = project_table.get("optional-dependencies") {
+            for (_group_name, group_value) in opt_deps_table.iter() {
+                if let Item::Value(value) = group_value {
+                    if let Some(array) = value.as_array() {
+                        for dep in array {
+                            if let Some(dep_str) = dep.as_str() {
+                                optional_dependencies.insert(Dependency::parse(dep_str).unwrap());
                             }
                         }
                     }
@@ -91,7 +84,7 @@ pub fn read(path: &PathBuf) -> Result<PyProject, io::Error> {
         "Found existing deps: {}",
         existing_deps
             .iter()
-            .map(|d| d.to_string())
+            .map(|d| format!("{d}"))
             .collect::<Vec<_>>()
             .join(",")
     );
@@ -111,11 +104,11 @@ pub fn write(
     // that contains the existing ones and anything new
     let mut arr = Array::new();
     for dep in new_deps {
-        info!("Adding: {}", dep.to_string());
-        arr.push(dep.to_string());
+        info!("Adding: {dep}");
+        arr.push(dep.to_dependency_repr());
     }
     for dep in pyproject.deps {
-        arr.push(dep.to_string());
+        arr.push(dep.to_dependency_repr());
     }
     // Insert into project table
     if let Some(project) = pyproject.toml_document.get_mut("project") {
@@ -160,7 +153,7 @@ mod tests {
 
     fn setup_toml_file(content: &str) -> NamedTempFile {
         let mut file = NamedTempFile::new().unwrap();
-        writeln!(file, "{}", content).unwrap();
+        writeln!(file, "{content}").unwrap();
         file
     }
 

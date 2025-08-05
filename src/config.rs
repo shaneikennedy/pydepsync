@@ -23,7 +23,7 @@ pub fn load_config() -> Config {
         return match toml::from_str(&contents) {
             Ok(config) => config,
             Err(_) => {
-                eprintln!("Warning: Failed to parse config file at {:?}", path);
+                eprintln!("Warning: Failed to parse config file at {path:?}");
                 Config::default()
             }
         };

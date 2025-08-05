@@ -17,13 +17,13 @@ impl PackageResolver {
             None => Vec::new(),
         };
         let default_indexes = vec!["https://pypi.org/simple".to_string()];
-        return PackageResolver {
+        PackageResolver {
             indexes: pref_index
                 .into_iter()
                 .chain(default_indexes)
                 .chain(extra_indexes)
                 .collect(),
-        };
+        }
     }
 
     pub fn resolve(&self, dep: &Dependency) -> Result<Dependency, io::Error> {
@@ -63,10 +63,7 @@ impl PackageResolver {
         }
         let html = html.unwrap();
         let versions = Self::parse_versions_on_index(dep, index, html.as_str());
-        let versions = match versions {
-            Some(v) => v,
-            None => Vec::new(),
-        };
+        let versions = versions.unwrap_or_default();
 
         let lastest_version = Self::get_latest_version_from_version_str(versions);
 
@@ -88,7 +85,7 @@ impl PackageResolver {
     }
 
     fn parse_versions_on_index(dep: &Dependency, index: &str, html: &str) -> Option<Vec<String>> {
-        let document = Html::parse_document(&html);
+        let document = Html::parse_document(html);
         let selector = Selector::parse("a");
         if selector.is_err() {
             warn!(
@@ -114,7 +111,7 @@ impl PackageResolver {
                         if let Some(end) = rest.find(".tar.gz") {
                             let version = &rest[..end];
                             // Verify it only contains numbers and dots
-                            if version.chars().all(|c| c.is_digit(10) || c == '.') {
+                            if version.chars().all(|c| c.is_ascii_digit() || c == '.') {
                                 versions.push(version.to_string());
                             }
                         }
