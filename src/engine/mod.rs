@@ -43,16 +43,16 @@ pub struct DetectEngine<'a> {
 pub enum DetectEngineError {
     #[allow(dead_code)]
     #[error("problem evaluating imports")]
-    EvaluationError,
+    Evaluation,
     #[error("problem reading packages")]
-    FileFindingError,
+    FileFinding,
     #[error("problem reading python file")]
-    FileReadingError,
+    FileReading,
     #[error("problem parsing python code")]
-    ParsingError,
+    Parsing,
     #[allow(dead_code)]
     #[error("problem resolving packages on package index")]
-    ResolverError,
+    Resolver,
 }
 
 impl DetectEngine<'_> {
@@ -70,13 +70,13 @@ impl DetectEngine<'_> {
             options.preferred_index.clone(),
         );
         let evaluator = DependencyEvaluator::new(options.extras_to_remap);
-        return DetectEngine {
+        DetectEngine {
             pyproject,
             finder: finder::PythonFileFinder::new().exclude_dirs(exclude_dirs),
             parser: extract_dependencies,
             evaluator,
             resolver,
-        };
+        }
     }
 
     pub fn detect_dependencies(
@@ -87,16 +87,16 @@ impl DetectEngine<'_> {
         info!("Reading your code...");
         let files = self.finder.find_files(&path);
         if files.is_err() {
-            return Err(DetectEngineError::FileFindingError);
+            return Err(DetectEngineError::FileFinding);
         }
 
         // Parse imports
         info!("Parsing imports...");
         let mut candidates: HashSet<String> = HashSet::new();
         for file in &files.unwrap() {
-            let contents = read(&file);
+            let contents = read(file);
             if contents.is_err() {
-                return Err(DetectEngineError::FileReadingError);
+                return Err(DetectEngineError::FileReading);
             }
             let contents = contents.unwrap();
 
@@ -104,7 +104,7 @@ impl DetectEngine<'_> {
             let content_str = from_utf8(&contents).unwrap();
             let imports = (self.parser)(content_str);
             if imports.is_err() {
-                return Err(DetectEngineError::ParsingError);
+                return Err(DetectEngineError::Parsing);
             }
             for i in imports.unwrap() {
                 // filter out mod.sub.subsub  we only want mod here
@@ -147,7 +147,7 @@ impl DetectEngine<'_> {
             "Resolved deps: {}",
             resolved_deps
                 .iter()
-                .map(|d| d.to_string())
+                .map(|d| format!("{d}"))
                 .collect::<Vec<_>>()
                 .join(",")
         );
@@ -157,9 +157,9 @@ impl DetectEngine<'_> {
 
     // Get the local packages in the file tree and parse as a list of Strings that are "local packages"
     fn get_local_packages(&self, path: &PathBuf) -> Result<HashSet<String>, DetectEngineError> {
-        let local_packages = self.finder.find_local_packages(&path);
+        let local_packages = self.finder.find_local_packages(path);
         if local_packages.is_err() {
-            return Err(DetectEngineError::FileFindingError);
+            return Err(DetectEngineError::FileFinding);
         }
         let local_packages: HashSet<String> = local_packages
             .unwrap()
@@ -176,7 +176,7 @@ impl DetectEngine<'_> {
                 .collect::<Vec<_>>()
                 .join(",")
         );
-        return Ok(local_packages);
+        Ok(local_packages)
     }
 }
 

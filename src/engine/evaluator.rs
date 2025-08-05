@@ -10,9 +10,9 @@ pub struct DependencyEvaluator<'a> {
     irregulars_to_remap: HashMap<String, String>,
 }
 
-impl<'a> DependencyEvaluator<'_> {
+impl DependencyEvaluator<'_> {
     pub fn new(extras_to_remap: HashMap<String, String>) -> Self {
-        let mut irregulars = HashMap::from(extras_to_remap);
+        let mut irregulars = extras_to_remap;
         for (key, val) in irregulars::get_python_irregulars() {
             irregulars.insert(key.to_string(), val.to_string());
         }
@@ -35,8 +35,8 @@ impl<'a> DependencyEvaluator<'_> {
         let deps: HashSet<String> = candidates
             .iter()
             .filter(|c| !self.stdlib_pakages.contains(&c.as_str()))
+            .filter(|&c| !local_packages.clone().contains(c))
             .cloned()
-            .filter(|c| !local_packages.clone().contains(c))
             .map(|c| {
                 let hit = self.irregulars_to_remap.get(c.as_str());
                 match hit {

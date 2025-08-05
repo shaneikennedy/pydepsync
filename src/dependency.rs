@@ -1,5 +1,6 @@
 use regex::Regex;
 use std::collections::HashSet;
+use std::fmt::Display;
 use std::hash::Hash;
 
 #[derive(Debug, Eq, Clone)]
@@ -8,6 +9,35 @@ pub struct Dependency {
     extras: HashSet<String>,
     version_spec: Option<(String, String)>, // (specifier, version)
     markers: Option<String>,
+}
+
+impl Display for Dependency {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut dep = String::new();
+        dep += self.name.as_str();
+        if !&self.extras.is_empty() {
+            dep += "[";
+            let mut extras = self
+                .extras
+                .iter()
+                .map(|e| e.to_string())
+                .collect::<Vec<_>>();
+
+            extras.sort(); // Needs to be sorted because iterating over a hashset is not deterministic
+            let extras_str = extras.join(",");
+            dep += extras_str.as_str();
+            dep += "]";
+        }
+        dep = match &self.version_spec {
+            Some(v) => dep + format!("{}{}", v.0, v.1).as_str(),
+            None => dep,
+        };
+        dep = match &self.markers {
+            Some(m) => dep + format!("; {m}").as_str(),
+            None => dep,
+        };
+        write!(f, "{dep}")
+    }
 }
 
 impl PartialEq for Dependency {
@@ -27,11 +57,11 @@ impl Dependency {
         self.name.clone()
     }
 
-    pub fn to_string(&self) -> String {
+    pub fn to_dependency_repr(&self) -> String {
         let mut dep = String::new();
-        dep = dep + self.name.as_str();
+        dep += self.name.as_str();
         if !&self.extras.is_empty() {
-            dep = dep + "[";
+            dep += "[";
             let mut extras = self
                 .extras
                 .iter()
@@ -40,15 +70,15 @@ impl Dependency {
 
             extras.sort(); // Needs to be sorted because iterating over a hashset is not deterministic
             let extras_str = extras.join(",");
-            dep = dep + extras_str.as_str();
-            dep = dep + "]";
+            dep += extras_str.as_str();
+            dep += "]";
         }
         dep = match &self.version_spec {
             Some(v) => dep + format!("{}{}", v.0, v.1).as_str(),
             None => dep,
         };
         dep = match &self.markers {
-            Some(m) => dep + format!("; {}", m).as_str(),
+            Some(m) => dep + format!("; {m}").as_str(),
             None => dep,
         };
         dep
@@ -134,10 +164,9 @@ mod tests {
     }
 
     #[test]
-    fn test_to_string() {
+    fn test_display() {
         let candidate = "pandas[excel,postgres]>=1.3.0; platform_system != 'Windows'";
         let dep = Dependency::parse(candidate).unwrap();
-        let res = dep.to_string();
-        assert_eq!(res.as_str(), candidate);
+        assert_eq!(format!("{dep}"), candidate);
     }
 }
